@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Chat - RAG + Context</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .container {
+            background: #1e293b;
+            border-radius: 16px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+            margin: 0 auto;
+            max-width: 960px;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 48px);
+        }
+
+        .header {
+            border-bottom: 1px solid #334155;
+            padding: 20px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 {
+            color: #f1f5f9;
+            font-size: 22px;
+        }
+
+        .session-info {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+
+        .session-info span {
+            color: #38bdf8;
+        }
+
+        .toolbar {
+            border-bottom: 1px solid #334155;
+            padding: 12px 28px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .toolbar button {
+            background: #334155;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            color: #cbd5e1;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 8px 16px;
+            transition: all 0.2s;
+        }
+
+        .toolbar button:hover {
+            background: #475569;
+            color: #f1f5f9;
+        }
+
+        .toolbar button.active {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #fff;
+        }
+
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user { justify-content: flex-end; }
+
+        .avatar {
+            background: #475569;
+            border-radius: 10px;
+            color: #cbd5e1;
+            font-size: 13px;
+            font-weight: 700;
+            height: 36px;
+            line-height: 36px;
+            text-align: center;
+            width: 36px;
+            flex-shrink: 0;
+        }
+
+        .message.user .avatar { background: #2563eb; color: #fff; }
+
+        .bubble {
+            background: #334155;
+            border-radius: 12px;
+            line-height: 1.7;
+            max-width: 75%;
+            padding: 14px 18px;
+            font-size: 14px;
+        }
+
+        .message.user .bubble { background: #2563eb; }
+
+        .bubble pre {
+            background: #0f172a;
+            border-radius: 8px;
+            margin: 8px 0;
+            overflow-x: auto;
+            padding: 12px;
+            font-size: 13px;
+        }
+
+        .bubble code {
+            background: #0f172a;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 13px;
+        }
+
+        .bubble pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .kb-ref {
+            background: #1e3a3a;
+            border: 1px solid #0d9488;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            padding: 12px 16px;
+        }
+
+        .kb-ref .kb-title {
+            color: #5eead4;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .kb-ref .kb-content {
+            color: #99f6e4;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .input-area {
+            border-top: 1px solid #334155;
+            padding: 16px 28px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-area textarea {
+            background: #0f172a;
+            border: 1px solid #475569;
+            border-radius: 12px;
+            color: #e2e8f0;
+            flex: 1;
+            font-size: 14px;
+            min-height: 56px;
+            max-height: 120px;
+            outline: none;
+            padding: 14px 16px;
+            resize: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-area textarea:focus {
+            border-color: #2563eb;
+        }
+
+        .input-area button {
+            background: #2563eb;
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 0 24px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .input-area button:hover:not(:disabled) {
+            background: #1d4ed8;
+        }
+
+        .input-area button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .empty-hint {
+            color: #64748b;
+            text-align: center;
+            margin-top: 60px;
+            font-size: 14px;
+        }
+
+        .typing-dot {
+            animation: blink 1.4s infinite both;
+            background: #94a3b8;
+            border-radius: 50%;
+            display: inline-block;
+            height: 8px;
+            width: 8px;
+            margin: 0 2px;
+        }
+
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes blink {
+            0%, 80%, 100% { opacity: 0.2; }
+            40% { opacity: 1; }
+        }
+
+        .knowledge-panel {
+            background: #0f172a;
+            border-left: 1px solid #334155;
+            display: none;
+            flex-direction: column;
+            width: 320px;
+            overflow-y: auto;
+        }
+
+        .knowledge-panel.show { display: flex; }
+
+        .knowledge-panel .panel-header {
+            border-bottom: 1px solid #334155;
+            padding: 16px;
+            color: #f1f5f9;
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .knowledge-panel .doc-item {
+            border-bottom: 1px solid #1e293b;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: background 0.2s;
+        }
+
+        .knowledge-panel .doc-item:hover { background: #1e293b; }
+
+        .knowledge-panel .doc-item h4 {
+            color: #e2e8f0;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .knowledge-panel .doc-item p {
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .knowledge-panel .add-doc {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-bottom: 1px solid #334155;
+        }
+
+        .knowledge-panel .add-doc input,
+        .knowledge-panel .add-doc textarea {
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 13px;
+            padding: 10px 12px;
+            outline: none;
+        }
+
+        .knowledge-panel .add-doc input:focus,
+        .knowledge-panel .add-doc textarea:focus {
+            border-color: #2563eb;
+        }
+
+        .knowledge-panel .add-doc textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .knowledge-panel .add-doc button {
+            background: #2563eb;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 8px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+<div class="container" style="flex-direction: row;">
+    <div style="flex: 1; display: flex; flex-direction: column;">
+        <div class="header">
+            <h1>AI Agent Chat</h1>
+            <div class="session-info">Session: #<span id="sessionIdDisplay">-</span></div>
+        </div>
+
+        <div class="toolbar">
+            <button onclick="newSession()">+ New Session</button>
+            <button id="kbToggleBtn" onclick="toggleKnowledgePanel()">Knowledge Base</button>
+        </div>
+
+        <div class="chat-area" id="chatArea">
+            <div class="empty-hint">Start a conversation or ask a question</div>
+        </div>
+
+        <div class="input-area">
+            <textarea id="messageInput" placeholder="Enter your message... (Enter to send, Shift+Enter for new line)" rows="2"></textarea>
+            <button id="sendBtn" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <div class="knowledge-panel" id="knowledgePanel">
+        <div class="panel-header">Knowledge Base</div>
+        <div class="add-doc">
+            <input type="text" id="docTitle" placeholder="Document title">
+            <textarea id="docContent" placeholder="Document content..."></textarea>
+            <button onclick="addDocument()">Add to Knowledge Base</button>
+        </div>
+        <div id="docList"></div>
+    </div>
+</div>
+
+<script>
+    let sessionId = null;
+    let isLoading = false;
+    let showKnowledgePanel = false;
+
+    function newSession() {
+        fetch('/api/ai/session', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                sessionId = data.data.sessionId;
+                document.getElementById('sessionIdDisplay').textContent = sessionId;
+                document.getElementById('chatArea').innerHTML = '<div class="empty-hint">New session created — ask a question</div>';
+            });
+    }
+
+    function toggleKnowledgePanel() {
+        showKnowledgePanel = !showKnowledgePanel;
+        document.getElementById('knowledgePanel').classList.toggle('show', showKnowledgePanel);
+        if (showKnowledgePanel) loadDocuments();
+    }
+
+    function loadDocuments() {
+        fetch('/api/knowledge/list')
+            .then(r => r.json())
+            .then(data => {
+                const list = document.getElementById('docList');
+                if (!data.data || data.data.length === 0) {
+                    list.innerHTML = '<div style="padding:16px;color:#64748b;font-size:13px;">No documents yet</div>';
+                    return;
+                }
+                list.innerHTML = data.data.map(doc => `
+                    <div class="doc-item" onclick="deleteDocument(${doc.id})" title="Click to delete">
+                        <h4>${escapeHtml(doc.title)}</h4>
+                        <p>${escapeHtml(doc.content.substring(0, 100))}...</p>
+                    </div>
+                `).join('');
+            });
+    }
+
+    function addDocument() {
+        const title = document.getElementById('docTitle').value.trim();
+        const content = document.getElementById('docContent').value.trim();
+        if (!title || !content) { alert('Please fill in title and content'); return; }
+
+        fetch('/api/knowledge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content, category: 'general' })
+        })
+            .then(r => r.json())
+            .then(() => {
+                document.getElementById('docTitle').value = '';
+                document.getElementById('docContent').value = '';
+                loadDocuments();
+            });
+    }
+
+    function deleteDocument(id) {
+        if (!confirm('Delete this document?')) return;
+        fetch('/api/knowledge/' + id, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(() => loadDocuments());
+    }
+
+    function sendMessage() {
+        if (isLoading) return;
+        const input = document.getElementById('messageInput');
+        const message = input.value.trim();
+        if (!message) return;
+
+        if (!sessionId) {
+            fetch('/api/ai/session', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    sessionId = data.data.sessionId;
+                    document.getElementById('sessionIdDisplay').textContent = sessionId;
+                    doSend(message);
+                });
+            return;
+        }
+
+        doSend(message);
+    }
+
+    function doSend(message) {
+        isLoading = true;
+        document.getElementById('sendBtn').disabled = true;
+        document.getElementById('messageInput').value = '';
+        document.getElementById('messageInput').style.height = 'auto';
+
+        const chatArea = document.getElementById('chatArea');
+        if (chatArea.querySelector('.empty-hint')) chatArea.innerHTML = '';
+
+        chatArea.insertAdjacentHTML('beforeend', `
+            <div class="message user">
+                <div class="bubble">${escapeHtml(message)}</div>
+                <div class="avatar">U</div>
+            </div>
+        `);
+
+        const typingId = 'typing-' + Date.now();
+        chatArea.insertAdjacentHTML('beforeend', `
+            <div class="message" id="${typingId}">
+                <div class="avatar">AI</div>
+                <div class="bubble">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                </div>
+            </div>
+        `);
+        chatArea.scrollTop = chatArea.scrollHeight;
+
+        fetch(`/api/ai/generate?message=${encodeURIComponent(message)}&sessionId=${sessionId}`)
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById(typingId).querySelector('.bubble').innerHTML = marked.parse(data);
+            })
+            .catch(error => {
+                document.getElementById(typingId).querySelector('.bubble').textContent = 'Request failed. Please check the backend service.';
+            })
+            .finally(() => {
+                isLoading = false;
+                document.getElementById('sendBtn').disabled = false;
+                chatArea.scrollTop = chatArea.scrollHeight;
+            });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    document.getElementById('messageInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    document.getElementById('messageInput').addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+</script>
+</body>
+</html>

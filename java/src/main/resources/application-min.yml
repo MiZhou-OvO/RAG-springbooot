@@ -1,0 +1,9 @@
+server:
+  servlet:
+    context-path: /index
+  port: 90
+spring:
+  ai:
+    deepseek:
+      chat:
+        enabled: false
